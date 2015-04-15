@@ -152,21 +152,25 @@ char * GetTime() {
   return tbuf;
 }
 
-void AcceptClient(struct sockaddr_in * pSockAddrIn, struct sockaddr_in * pSockAddr) {
+void AcceptClient(struct sockaddr_in * pSockAddrIn, struct sockaddr_in * pSockAddr, int Protocol) {
   char ip[INET_ADDRSTRLEN];
   char port[8] = {0};
   char addr[INET_ADDRSTRLEN + 8] = {0};
+  char proto[8] = {0};
+  char addr_with_proto[INET_ADDRSTRLEN + 16] = {0};
 
   inet_ntop(pSockAddr->sin_family, &pSockAddr->sin_addr, ip, INET_ADDRSTRLEN);
   sprintf(port, "%d", ntohs(pSockAddrIn->sin_port));
   sprintf(addr, "%s:%s", ip, port);
+  sprintf(proto, "%s", Protocol == SOCK_DGRAM ? "udp" : "tcp");
+  sprintf(addr_with_proto, "%s/%s", addr, proto);
 
   for (std::list<char *>::iterator it = g_aWhitelist.begin(); it != g_aWhitelist.end(); ++it) {
-    if (strcmp(ip, *it) == 0 || strcmp(addr, *it) == 0)
+    if (strcmp(ip, *it) == 0 || strcmp(addr, *it) == 0 || strcmp(addr_with_proto, *it) == 0)
       return;
   }
 
-  fprintf(g_LogFile, "%s - INFO - Block %s\n", GetTime(), addr);
+  fprintf(g_LogFile, "%s - INFO - Block %s\n", GetTime(), addr_with_proto);
   fflush(g_LogFile);
 
   char cmd[65536] = {0};
@@ -174,6 +178,8 @@ void AcceptClient(struct sockaddr_in * pSockAddrIn, struct sockaddr_in * pSockAd
   size_t ip_len = strlen(ip);
   size_t port_len = strlen(port);
   size_t addr_len = strlen(addr);
+  size_t proto_len = strlen(proto);
+  size_t addr_with_proto_len = strlen(addr_with_proto);
   size_t cmd_len = strlen(g_Command);
   for (int i = 0; i < cmd_len; i++) {
     if (i < cmd_len - 3 && memcmp(&g_Command[i], "$IP", 3) == 0) {
@@ -186,10 +192,25 @@ void AcceptClient(struct sockaddr_in * pSockAddrIn, struct sockaddr_in * pSockAd
       s += port_len;
       i += 4;
     }
-    else if (i < addr_len - 5 && memcmp(&g_Command[i], "$ADDR", 5) == 0) {
+    else if (i < cmd_len - 5 && memcmp(&g_Command[i], "$ADDR", 5) == 0) {
       memcpy(s, addr, addr_len);
       s += addr_len;
       i += 4;
+    }
+    else if (i < cmd_len - 6 && memcmp(&g_Command[i], "$PROTO", 6) == 0) {
+      memcpy(s, proto, proto_len);
+      s += proto_len;
+      i += 5;
+    }
+    else if (i < cmd_len - 16 && memcmp(&g_Command[i], "$ADDR_WITH_PROTO", 16) == 0) {
+      memcpy(s, addr_with_proto, addr_with_proto_len);
+      s += addr_with_proto_len;
+      i += 15;
+    }
+    else if (i < cmd_len - 16 && memcmp(&g_Command[i], "$FULL_ADDR", 10) == 0) {
+      memcpy(s, addr_with_proto, addr_with_proto_len);
+      s += addr_with_proto_len;
+      i += 9;
     }
     else {
       *s = g_Command[i];
@@ -261,7 +282,7 @@ void ChildServer(char * PortName) {
         fprintf(g_LogFile, "%s - WARNING - Error accepting client on %s\n", GetTime(), PortName);
         fflush(g_LogFile);
       } else {
-        AcceptClient(&sin, &client);
+        AcceptClient(&sin, &client, proto);
         close(fd);
       }
     }
@@ -271,7 +292,7 @@ void ChildServer(char * PortName) {
     while (true) {
       slen = sizeof(client);
       recvfrom(listener, g_Buffer, g_BufferSize, 0, (struct sockaddr *)&client, &slen);
-      AcceptClient(&sin, &client);
+      AcceptClient(&sin, &client, proto);
     }
   }
 }
