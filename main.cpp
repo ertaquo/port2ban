@@ -10,6 +10,9 @@
 #include <arpa/inet.h>
 #include <sys/wait.h>
 #include <errno.h>
+#include <string.h>
+#include <cctype>
+#include <time.h>
 
 const char * g_DefaultConfigFilename = "/etc/port2ban.conf";
 const char * g_DefaultLogFilename = "/var/log/port2ban.log";
